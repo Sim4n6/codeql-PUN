@@ -6,14 +6,12 @@ import experimental.adaptivethreatmodeling.EndpointTypes
 private import semmle.javascript.security.dataflow.SqlInjectionCustomizations
 private import semmle.javascript.security.dataflow.DomBasedXssCustomizations
 private import semmle.javascript.security.dataflow.NosqlInjectionCustomizations
-private import semmle.javascript.security.dataflow.TaintedPathCustomizations
 private import semmle.javascript.heuristics.SyntacticHeuristics as SyntacticHeuristics
 private import semmle.javascript.filters.ClassifyFiles as ClassifyFiles
 private import semmle.javascript.security.dataflow.XxeCustomizations
 private import semmle.javascript.security.dataflow.RemotePropertyInjectionCustomizations
 private import semmle.javascript.security.dataflow.TypeConfusionThroughParameterTamperingCustomizations
 private import semmle.javascript.security.dataflow.ZipSlipCustomizations
-private import semmle.javascript.security.dataflow.TaintedPathCustomizations
 private import semmle.javascript.security.dataflow.CleartextLoggingCustomizations
 private import semmle.javascript.security.dataflow.XpathInjectionCustomizations
 private import semmle.javascript.security.dataflow.Xss::Shared as Xss
@@ -28,10 +26,8 @@ private import semmle.javascript.security.dataflow.CommandInjectionCustomization
 private import semmle.javascript.security.dataflow.PrototypePollutionCustomizations
 private import semmle.javascript.security.dataflow.UnvalidatedDynamicMethodCallCustomizations
 private import semmle.javascript.security.dataflow.TaintedFormatStringCustomizations
-private import semmle.javascript.security.dataflow.NosqlInjectionCustomizations
 private import semmle.javascript.security.dataflow.PostMessageStarCustomizations
 private import semmle.javascript.security.dataflow.RegExpInjectionCustomizations
-private import semmle.javascript.security.dataflow.SqlInjectionCustomizations
 private import semmle.javascript.security.dataflow.InsecureRandomnessCustomizations
 private import semmle.javascript.security.dataflow.XmlBombCustomizations
 private import semmle.javascript.security.dataflow.InsufficientPasswordHashCustomizations
@@ -220,7 +216,7 @@ private class DomBasedXssSinkCharacteristic extends EndpointCharacteristic {
   ) {
     endpointClass instanceof XssSinkType and
     isPositiveIndicator = true and
-    confidence = maximalConfidence()
+    confidence = this.maximalConfidence()
   }
 }
 
@@ -238,7 +234,7 @@ private class TaintedPathSinkCharacteristic extends EndpointCharacteristic {
   ) {
     endpointClass instanceof TaintedPathSinkType and
     isPositiveIndicator = true and
-    confidence = maximalConfidence()
+    confidence = this.maximalConfidence()
   }
 }
 
@@ -256,7 +252,7 @@ private class SqlInjectionSinkCharacteristic extends EndpointCharacteristic {
   ) {
     endpointClass instanceof SqlInjectionSinkType and
     isPositiveIndicator = true and
-    confidence = maximalConfidence()
+    confidence = this.maximalConfidence()
   }
 }
 
@@ -274,7 +270,7 @@ private class NosqlInjectionSinkCharacteristic extends EndpointCharacteristic {
   ) {
     endpointClass instanceof NosqlInjectionSinkType and
     isPositiveIndicator = true and
-    confidence = maximalConfidence()
+    confidence = this.maximalConfidence()
   }
 }
 
@@ -296,7 +292,7 @@ private class ShellCommandInjectionFromEnvironmentSinkCharacteristic extends End
   ) {
     endpointClass instanceof ShellCommandInjectionFromEnvironmentSinkType and
     isPositiveIndicator = true and
-    confidence = maximalConfidence()
+    confidence = this.maximalConfidence()
   }
 }
 
@@ -335,7 +331,7 @@ abstract private class NotASinkCharacteristic extends EndpointCharacteristic {
   ) {
     endpointClass instanceof NegativeType and
     isPositiveIndicator = true and
-    confidence = highConfidence()
+    confidence = this.highConfidence()
   }
 }
 
@@ -354,7 +350,7 @@ abstract class LikelyNotASinkCharacteristic extends EndpointCharacteristic {
   ) {
     endpointClass instanceof NegativeType and
     isPositiveIndicator = true and
-    confidence = mediumConfidence()
+    confidence = this.mediumConfidence()
   }
 }
 
@@ -685,7 +681,7 @@ abstract private class StandardEndpointFilterCharacteristic extends EndpointFilt
   ) {
     endpointClass instanceof NegativeType and
     isPositiveIndicator = true and
-    confidence = mediumConfidence()
+    confidence = this.mediumConfidence()
   }
 }
 
@@ -786,7 +782,7 @@ abstract private class NosqlInjectionSinkEndpointFilterCharacteristic extends En
   ) {
     endpointClass instanceof NosqlInjectionSinkType and
     isPositiveIndicator = false and
-    confidence = mediumConfidence()
+    confidence = this.mediumConfidence()
   }
 }
 
@@ -817,7 +813,7 @@ private class ModeledSinkCharacteristic extends NosqlInjectionSinkEndpointFilter
   override predicate appliesToEndpoint(DataFlow::Node n) {
     exists(DataFlow::CallNode call | n = call.getAnArgument() |
       // Remove modeled sinks
-      isArgumentToKnownLibrarySinkFunction(n)
+      this.isArgumentToKnownLibrarySinkFunction(n)
     )
   }
 }
@@ -928,7 +924,7 @@ abstract private class SqlInjectionSinkEndpointFilterCharacteristic extends Endp
   ) {
     endpointClass instanceof SqlInjectionSinkType and
     isPositiveIndicator = false and
-    confidence = mediumConfidence()
+    confidence = this.mediumConfidence()
   }
 }
 
@@ -1002,7 +998,7 @@ abstract private class TaintedPathSinkEndpointFilterCharacteristic extends Endpo
   ) {
     endpointClass instanceof TaintedPathSinkType and
     isPositiveIndicator = false and
-    confidence = mediumConfidence()
+    confidence = this.mediumConfidence()
   }
 }
 
@@ -1055,7 +1051,7 @@ abstract private class XssSinkEndpointFilterCharacteristic extends EndpointFilte
   ) {
     endpointClass instanceof XssSinkType and
     isPositiveIndicator = false and
-    confidence = mediumConfidence()
+    confidence = this.mediumConfidence()
   }
 }
 

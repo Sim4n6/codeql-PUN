@@ -8,12 +8,10 @@ import TestUtilities.InlineExpectationsTest
 import semmle.python.dataflow.new.SensitiveDataSources
 private import semmle.python.ApiGraphs
 
-class SensitiveDataSourcesTest extends InlineExpectationsTest {
-  SensitiveDataSourcesTest() { this = "SensitiveDataSourcesTest" }
+module SensitiveDataSourcesTest implements TestSig {
+  string getARelevantTag() { result in ["SensitiveDataSource", "SensitiveUse"] }
 
-  override string getARelevantTag() { result in ["SensitiveDataSource", "SensitiveUse"] }
-
-  override predicate hasActualResult(Location location, string element, string tag, string value) {
+  predicate hasActualResult(Location location, string element, string tag, string value) {
     exists(location.getFile().getRelativePath()) and
     exists(SensitiveDataSource source |
       location = source.getLocation() and
@@ -22,7 +20,7 @@ class SensitiveDataSourcesTest extends InlineExpectationsTest {
       tag = "SensitiveDataSource"
       or
       exists(DataFlow::Node use |
-        any(SensitiveUseConfiguration config).hasFlow(source, use) and
+        SensitiveUseFlow::flow(source, use) and
         location = use.getLocation() and
         element = use.toString() and
         value = source.getClassification() and
@@ -32,19 +30,19 @@ class SensitiveDataSourcesTest extends InlineExpectationsTest {
   }
 }
 
-class SensitiveUseConfiguration extends TaintTracking::Configuration {
-  SensitiveUseConfiguration() { this = "SensitiveUseConfiguration" }
+import MakeTest<SensitiveDataSourcesTest>
 
-  override predicate isSource(DataFlow::Node node) { node instanceof SensitiveDataSource }
+module SensitiveUseConfig implements DataFlow::ConfigSig {
+  predicate isSource(DataFlow::Node node) { node instanceof SensitiveDataSource }
 
-  override predicate isSink(DataFlow::Node node) {
-    node = API::builtin("print").getACall().getArg(_)
-  }
+  predicate isSink(DataFlow::Node node) { node = API::builtin("print").getACall().getArg(_) }
 
-  override predicate isAdditionalTaintStep(DataFlow::Node node1, DataFlow::Node node2) {
+  predicate isAdditionalFlowStep(DataFlow::Node node1, DataFlow::Node node2) {
     sensitiveDataExtraStepForCalls(node1, node2)
   }
 }
+
+module SensitiveUseFlow = TaintTracking::Global<SensitiveUseConfig>;
 // import DataFlow::PathGraph
 // from SensitiveUseConfiguration cfg, DataFlow::PathNode source, DataFlow::PathNode sink
 // where cfg.hasFlowPath(source, sink)

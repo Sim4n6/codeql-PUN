@@ -34,27 +34,28 @@ def SINK_F(x):
 def inParam(tainted):
     def captureIn1():
         sinkI1 = tainted
-        SINK(sinkI1) #$ MISSING:captured
+        SINK(sinkI1) #$ captured
     captureIn1()
 
     def captureIn2():
         def m():
             sinkI2 = tainted
-            SINK(sinkI2) #$ MISSING:captured
+            SINK(sinkI2) #$ captured
         m()
     captureIn2()
 
-    captureIn3 = lambda arg: SINK(tainted)
+    captureIn3 = lambda arg: SINK(tainted) #$ captured
     captureIn3("")
 
     def captureIn1NotCalled():
-        nonSink0 = tainted
-        SINK_F(nonSink0)
+        nonSink1 = tainted
+        SINK_F(nonSink1)
 
     def captureIn2NotCalled():
+        # notice that `m` is not called
         def m():
-            nonSink0 = tainted
-            SINK_F(nonSink0)
+            nonSink1 = tainted
+            SINK_F(nonSink1)
     captureIn2NotCalled()
 
 @expects(3)
@@ -67,27 +68,28 @@ def inLocal():
 
     def captureIn1():
         sinkI1 = tainted
-        SINK(sinkI1) #$ MISSING:captured
+        SINK(sinkI1) #$ captured
     captureIn1()
 
     def captureIn2():
         def m():
             sinkI2 = tainted
-            SINK(sinkI2) #$ MISSING:captured
+            SINK(sinkI2) #$ captured
         m()
     captureIn2()
 
-    captureIn3 = lambda arg: SINK(tainted)
+    captureIn3 = lambda arg: SINK(tainted) #$ captured
     captureIn3("")
 
     def captureIn1NotCalled():
-        nonSink0 = tainted
-        SINK_F(nonSink0)
+        nonSink1 = tainted
+        SINK_F(nonSink1)
 
     def captureIn2NotCalled():
+        # notice that `m` is not called
         def m():
-            nonSink0 = tainted
-            SINK_F(nonSink0)
+            nonSink2 = tainted
+            SINK_F(nonSink2)
     captureIn2NotCalled()
 
 @expects(3)

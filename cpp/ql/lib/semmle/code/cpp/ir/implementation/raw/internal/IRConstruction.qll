@@ -178,9 +178,9 @@ module Raw {
   }
 }
 
-class TStageInstruction = TRawInstruction;
+class TStageInstruction = TRawInstruction or TRawUnreachedInstruction;
 
-predicate hasInstruction(TRawInstruction instr) { any() }
+predicate hasInstruction(TStageInstruction instr) { any() }
 
 predicate hasModeledMemoryResult(Instruction instruction) { none() }
 
@@ -368,29 +368,44 @@ private predicate isStrictlyForwardGoto(GotoStmt goto) {
 
 Locatable getInstructionAst(TStageInstruction instr) {
   result = getInstructionTranslatedElement(instr).getAst()
-}
-
-/** DEPRECATED: Alias for getInstructionAst */
-deprecated Locatable getInstructionAST(TStageInstruction instr) {
-  result = getInstructionAst(instr)
+  or
+  exists(IRFunction irFunc |
+    instr = TRawUnreachedInstruction(irFunc) and
+    result = irFunc.getFunction()
+  )
 }
 
 CppType getInstructionResultType(TStageInstruction instr) {
   getInstructionTranslatedElement(instr).hasInstruction(_, getInstructionTag(instr), result)
+  or
+  instr instanceof TRawUnreachedInstruction and
+  result = getVoidType()
 }
 
 predicate getInstructionOpcode(Opcode opcode, TStageInstruction instr) {
   getInstructionTranslatedElement(instr).hasInstruction(opcode, getInstructionTag(instr), _)
+  or
+  instr instanceof TRawUnreachedInstruction and
+  opcode instanceof Opcode::Unreached
 }
 
 IRFunctionBase getInstructionEnclosingIRFunction(TStageInstruction instr) {
   result.getFunction() = getInstructionTranslatedElement(instr).getFunction()
+  or
+  instr = TRawUnreachedInstruction(result)
 }
 
 Instruction getPrimaryInstructionForSideEffect(SideEffectInstruction instruction) {
   result =
     getInstructionTranslatedElement(instruction)
         .getPrimaryInstructionForSideEffect(getInstructionTag(instruction))
+}
+
+predicate hasUnreachedInstruction(IRFunction func) {
+  exists(Call c |
+    c.getEnclosingFunction() = func.getFunction() and
+    any(Options opt).exits(c.getTarget())
+  )
 }
 
 import CachedForDebugging
@@ -408,7 +423,12 @@ private module CachedForDebugging {
   cached
   predicate instructionHasSortKeys(Instruction instruction, int key1, int key2) {
     key1 = getInstructionTranslatedElement(instruction).getId() and
-    getInstructionTag(instruction) =
+    getInstructionTag(instruction) = tagByRank(key2)
+  }
+
+  pragma[nomagic]
+  private InstructionTag tagByRank(int key2) {
+    result =
       rank[key2](InstructionTag tag, string tagId |
         tagId = getInstructionTagId(tag)
       |

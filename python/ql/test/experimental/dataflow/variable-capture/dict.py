@@ -37,7 +37,7 @@ def out():
     def captureOut1():
         sinkO1["x"] = SOURCE
     captureOut1()
-    SINK(sinkO1["x"]) #$ MISSING:captured
+    SINK(sinkO1["x"]) #$ captured
 
     sinkO2 = { "x": "" }
     def captureOut2():
@@ -45,7 +45,7 @@ def out():
             sinkO2["x"] = SOURCE
         m()
     captureOut2()
-    SINK(sinkO2["x"]) #$ MISSING:captured
+    SINK(sinkO2["x"]) #$ captured
 
     nonSink0 = { "x": "" }
     def captureOut1NotCalled():
@@ -67,7 +67,7 @@ def through(tainted):
     def captureOut1():
         sinkO1["x"] = tainted
     captureOut1()
-    SINK(sinkO1["x"]) #$ MISSING:captured
+    SINK(sinkO1["x"]) #$ captured
 
     sinkO2 = { "x": "" }
     def captureOut2():
@@ -75,18 +75,20 @@ def through(tainted):
             sinkO2["x"] = tainted
         m()
     captureOut2()
-    SINK(sinkO2["x"]) #$ MISSING:captured
+    SINK(sinkO2["x"]) #$ captured
 
-    nonSink0 = { "x": "" }
+    nonSink1 = { "x": "" }
     def captureOut1NotCalled():
-        nonSink0["x"] = tainted
-    SINK_F(nonSink0["x"])
+        nonSink1["x"] = tainted
+    SINK_F(nonSink1["x"])
 
+    nonSink2 = { "x": "" }
     def captureOut2NotCalled():
+        # notice that `m` is not called
         def m():
-            nonSink0["x"] = tainted
+            nonSink2["x"] = tainted
     captureOut2NotCalled()
-    SINK_F(nonSink0["x"])
+    SINK_F(nonSink2["x"])
 
 @expects(4)
 def test_through():

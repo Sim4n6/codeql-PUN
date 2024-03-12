@@ -54,6 +54,18 @@
  *      return value. The return values are zero-indexed
  *    - "ReturnValue[n1..n2]": Similar to "ReturnValue[n]" but selects any
  *      return value in the given range. The range is inclusive at both ends.
+ *
+ *    For summaries, `input` and `output` may be suffixed by any number of the
+ *    following, separated by ".":
+ *    - "Field[pkg.className.fieldname]": Selects the contents of the field `f`
+ *      which satisfies `f.hasQualifiedName(pkg, className, fieldname)`.
+ *    - "SyntheticField[f]": Selects the contents of the synthetic field `f`.
+ *    - "ArrayElement": Selects an element in an array or slice.
+ *    - "Element": Selects an element in a collection.
+ *    - "MapKey": Selects a key in a map.
+ *    - "MapValue": Selects a value in a map.
+ *    - "Dereference": Selects the value referenced by a pointer.
+ *
  * 8. The `kind` column is a tag that can be referenced from QL to determine to
  *    which classes the interpreted elements should be added. For example, for
  *    sources "remote" indicates a default remote flow source, and for summaries
@@ -62,29 +74,13 @@
  */
 
 private import go
-private import ExternalFlowExtensions as Extensions
+import internal.ExternalFlowExtensions
 private import internal.DataFlowPrivate
+private import internal.FlowSummaryImpl
+private import internal.FlowSummaryImpl::Private
 private import internal.FlowSummaryImpl::Private::External
-private import internal.FlowSummaryImplSpecific
-private import internal.AccessPathSyntax
-private import FlowSummary
-
-/**
- * A module importing the frameworks that provide external flow data,
- * ensuring that they are visible to the taint tracking / data flow library.
- */
-private module Frameworks {
-  private import semmle.go.frameworks.Stdlib
-}
-
-/** Holds if a source model exists for the given parameters. */
-predicate sourceModel = Extensions::sourceModel/9;
-
-/** Holds if a sink model exists for the given parameters. */
-predicate sinkModel = Extensions::sinkModel/9;
-
-/** Holds if a summary model exists for the given parameters. */
-predicate summaryModel = Extensions::summaryModel/10;
+private import internal.FlowSummaryImpl::Public
+private import codeql.mad.ModelValidation as SharedModelVal
 
 /** Holds if `package` have MaD framework coverage. */
 private predicate packageHasMaDCoverage(string package) {
@@ -188,12 +184,15 @@ module ModelValidation {
     )
   }
 
-  private string getInvalidModelKind() {
-    exists(string kind | summaryModel(_, _, _, _, _, _, _, _, kind, _) |
-      not kind = ["taint", "value"] and
-      result = "Invalid kind \"" + kind + "\" in summary model."
-    )
+  private module KindValConfig implements SharedModelVal::KindValidationConfigSig {
+    predicate summaryKind(string kind) { summaryModel(_, _, _, _, _, _, _, _, kind, _) }
+
+    predicate sinkKind(string kind) { sinkModel(_, _, _, _, _, _, _, kind, _) }
+
+    predicate sourceKind(string kind) { sourceModel(_, _, _, _, _, _, _, kind, _) }
   }
+
+  private module KindVal = SharedModelVal::KindValidation<KindValConfig>;
 
   private string getInvalidModelSignature() {
     exists(
@@ -231,7 +230,7 @@ module ModelValidation {
     msg =
       [
         getInvalidModelSignature(), getInvalidModelInput(), getInvalidModelOutput(),
-        getInvalidModelKind()
+        KindVal::getInvalidModelKind()
       ]
   }
 }
@@ -275,7 +274,7 @@ private string interpretPackage(string p) {
 }
 
 /** Gets the source/sink/summary element corresponding to the supplied parameters. */
-SourceOrSinkElement interpretElement(
+SourceSinkInterpretationInput::SourceOrSinkElement interpretElement(
   string pkg, string type, boolean subtypes, string name, string signature, string ext
 ) {
   elementSpec(pkg, type, subtypes, name, signature, ext) and
@@ -299,8 +298,9 @@ SourceOrSinkElement interpretElement(
 predicate hasExternalSpecification(Function f) {
   f = any(SummarizedCallable sc).asFunction()
   or
-  exists(SourceOrSinkElement e | f = e.asEntity() |
-    sourceElement(e, _, _, _) or sinkElement(e, _, _, _)
+  exists(SourceSinkInterpretationInput::SourceOrSinkElement e | f = e.asEntity() |
+    SourceSinkInterpretationInput::sourceElement(e, _, _) or
+    SourceSinkInterpretationInput::sinkElement(e, _, _)
   )
 }
 
@@ -342,6 +342,8 @@ predicate parseContent(string component, DataFlow::Content content) {
   component = "MapKey" and content instanceof DataFlow::MapKeyContent
   or
   component = "MapValue" and content instanceof DataFlow::MapValueContent
+  or
+  component = "Dereference" and content instanceof DataFlow::PointerContent
 }
 
 cached
@@ -352,7 +354,9 @@ private module Cached {
    */
   cached
   predicate sourceNode(DataFlow::Node node, string kind) {
-    exists(InterpretNode n | isSourceNode(n, kind) and n.asNode() = node)
+    exists(SourceSinkInterpretationInput::InterpretNode n |
+      isSourceNode(n, kind) and n.asNode() = node
+    )
   }
 
   /**
@@ -361,8 +365,73 @@ private module Cached {
    */
   cached
   predicate sinkNode(DataFlow::Node node, string kind) {
-    exists(InterpretNode n | isSinkNode(n, kind) and n.asNode() = node)
+    exists(SourceSinkInterpretationInput::InterpretNode n |
+      isSinkNode(n, kind) and n.asNode() = node
+    )
   }
 }
 
 import Cached
+
+private predicate interpretSummary(
+  Callable c, string input, string output, string kind, string provenance
+) {
+  exists(
+    string namespace, string type, boolean subtypes, string name, string signature, string ext
+  |
+    summaryModel(namespace, type, subtypes, name, signature, ext, input, output, kind, provenance) and
+    c.asFunction() = interpretElement(namespace, type, subtypes, name, signature, ext).asEntity()
+  )
+}
+
+// adapter class for converting Mad summaries to `SummarizedCallable`s
+private class SummarizedCallableAdapter extends SummarizedCallable {
+  SummarizedCallableAdapter() { interpretSummary(this, _, _, _, _) }
+
+  private predicate relevantSummaryElementManual(string input, string output, string kind) {
+    exists(Provenance provenance |
+      interpretSummary(this, input, output, kind, provenance) and
+      provenance.isManual()
+    )
+  }
+
+  private predicate relevantSummaryElementGenerated(string input, string output, string kind) {
+    exists(Provenance provenance |
+      interpretSummary(this, input, output, kind, provenance) and
+      provenance.isGenerated()
+    )
+  }
+
+  override predicate propagatesFlow(string input, string output, boolean preservesValue) {
+    exists(string kind |
+      this.relevantSummaryElementManual(input, output, kind)
+      or
+      not this.relevantSummaryElementManual(_, _, _) and
+      this.relevantSummaryElementGenerated(input, output, kind)
+    |
+      if kind = "value" then preservesValue = true else preservesValue = false
+    )
+  }
+
+  override predicate hasProvenance(Provenance provenance) {
+    interpretSummary(this, _, _, _, provenance)
+  }
+}
+
+// adapter class for converting Mad neutrals to `NeutralCallable`s
+private class NeutralCallableAdapter extends NeutralCallable {
+  string kind;
+  string provenance_;
+
+  NeutralCallableAdapter() {
+    // Neutral models have not been implemented for Go.
+    none() and
+    exists(this) and
+    exists(kind) and
+    exists(provenance_)
+  }
+
+  override string getKind() { result = kind }
+
+  override predicate hasProvenance(Provenance provenance) { provenance = provenance_ }
+}

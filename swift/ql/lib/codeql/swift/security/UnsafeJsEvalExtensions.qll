@@ -14,19 +14,23 @@ private import codeql.swift.dataflow.ExternalFlow
 abstract class UnsafeJsEvalSink extends DataFlow::Node { }
 
 /**
- * A sanitizer for javascript evaluation vulnerabilities.
+ * A barrier for javascript evaluation vulnerabilities.
  */
-abstract class UnsafeJsEvalSanitizer extends DataFlow::Node { }
+abstract class UnsafeJsEvalBarrier extends DataFlow::Node { }
 
 /**
- * A unit class for adding additional taint steps.
+ * A unit class for adding additional flow steps.
  */
-class UnsafeJsEvalAdditionalTaintStep extends Unit {
+class UnsafeJsEvalAdditionalFlowStep extends Unit {
+  /**
+   * Holds if the step from `node1` to `node2` should be considered a flow
+   * step for paths related to javascript evaluation vulnerabilities.
+   */
   abstract predicate step(DataFlow::Node nodeFrom, DataFlow::Node nodeTo);
 }
 
 /**
- * A default SQL injection sink for the `WKWebView` interface.
+ * A default javascript evaluation sink for the `WKWebView` interface.
  */
 private class WKWebViewDefaultUnsafeJsEvalSink extends UnsafeJsEvalSink {
   WKWebViewDefaultUnsafeJsEvalSink() {
@@ -46,7 +50,7 @@ private class WKWebViewDefaultUnsafeJsEvalSink extends UnsafeJsEvalSink {
 }
 
 /**
- * A default SQL injection sink for the `WKUserContentController` interface.
+ * A default javascript evaluation sink for the `WKUserContentController` interface.
  */
 private class WKUserContentControllerDefaultUnsafeJsEvalSink extends UnsafeJsEvalSink {
   WKUserContentControllerDefaultUnsafeJsEvalSink() {
@@ -57,7 +61,7 @@ private class WKUserContentControllerDefaultUnsafeJsEvalSink extends UnsafeJsEva
 }
 
 /**
- * A default SQL injection sink for the `UIWebView` and `WebView` interfaces.
+ * A default javascript evaluation sink for the `UIWebView` and `WebView` interfaces.
  */
 private class UIWebViewDefaultUnsafeJsEvalSink extends UnsafeJsEvalSink {
   UIWebViewDefaultUnsafeJsEvalSink() {
@@ -70,7 +74,7 @@ private class UIWebViewDefaultUnsafeJsEvalSink extends UnsafeJsEvalSink {
 }
 
 /**
- * A default SQL injection sink for the `JSContext` interface.
+ * A default javascript evaluation sink for the `JSContext` interface.
  */
 private class JSContextDefaultUnsafeJsEvalSink extends UnsafeJsEvalSink {
   JSContextDefaultUnsafeJsEvalSink() {
@@ -83,7 +87,7 @@ private class JSContextDefaultUnsafeJsEvalSink extends UnsafeJsEvalSink {
 }
 
 /**
- * A default SQL injection sink for the `JSEvaluateScript` function.
+ * A default javascript evaluation sink for the `JSEvaluateScript` function.
  */
 private class JSEvaluateScriptDefaultUnsafeJsEvalSink extends UnsafeJsEvalSink {
   JSEvaluateScriptDefaultUnsafeJsEvalSink() {
@@ -94,38 +98,12 @@ private class JSEvaluateScriptDefaultUnsafeJsEvalSink extends UnsafeJsEvalSink {
 }
 
 /**
- * A default SQL injection sanitizer.
+ * A default javascript evaluation additional taint step.
  */
-private class DefaultUnsafeJsEvalAdditionalTaintStep extends UnsafeJsEvalAdditionalTaintStep {
+private class DefaultUnsafeJsEvalAdditionalFlowStep extends UnsafeJsEvalAdditionalFlowStep {
   override predicate step(DataFlow::Node nodeFrom, DataFlow::Node nodeTo) {
-    exists(Argument arg |
-      arg =
-        any(CallExpr ce |
-          ce.getStaticTarget()
-              .(FreeFunction)
-              .hasName([
-                  "JSStringCreateWithUTF8CString(_:)", "JSStringCreateWithCharacters(_:_:)",
-                  "JSStringRetain(_:)"
-                ])
-        ).getArgument(0)
-    |
-      nodeFrom.asExpr() = arg.getExpr() and
-      nodeTo.asExpr() = arg.getApplyExpr()
-    )
-    or
-    exists(CallExpr ce, Expr self, ClosureExpr closure |
-      ce.getStaticTarget()
-          .getName()
-          .matches(["withContiguousStorageIfAvailable(%)", "withUnsafeBufferPointer(%)"]) and
-      self = ce.getQualifier() and
-      ce.getArgument(0).getExpr() = closure
-    |
-      nodeFrom.asExpr() = self and
-      nodeTo.(DataFlow::ParameterNode).getParameter() = closure.getParam(0)
-    )
-    or
     exists(MemberRefExpr e, Expr self, VarDecl member |
-      self.getType().getName().matches(["Unsafe%Buffer%", "Unsafe%Pointer%"]) and
+      self.getType().getFullName().matches(["Unsafe%Buffer%", "Unsafe%Pointer%"]) and
       member.getName() = "baseAddress"
     |
       e.getBase() = self and
@@ -140,5 +118,15 @@ private class DefaultUnsafeJsEvalAdditionalTaintStep extends UnsafeJsEvalAdditio
  * A sink defined in a CSV model.
  */
 private class DefaultUnsafeJsEvalSink extends UnsafeJsEvalSink {
-  DefaultUnsafeJsEvalSink() { sinkNode(this, "js-eval") }
+  DefaultUnsafeJsEvalSink() { sinkNode(this, "code-injection") }
+}
+
+/**
+ * A barrier for javascript evaluation.
+ */
+private class UnsafeJsEvalDefaultBarrier extends UnsafeJsEvalBarrier {
+  UnsafeJsEvalDefaultBarrier() {
+    // any numeric type
+    this.asExpr().getType().getUnderlyingType().getABaseType*().getName() = "Numeric"
+  }
 }

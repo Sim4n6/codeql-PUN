@@ -33,7 +33,7 @@ private module Cached {
     exists(ApplyExpr apply, ExprCfgNode e |
       nodeFrom.asExpr() = [apply.getAnArgument().getExpr(), apply.getQualifier()] and
       apply.getStaticTarget().getName() = ["appendLiteral(_:)", "appendInterpolation(_:)"] and
-      e.getExpr() = [apply.getAnArgument().getExpr(), apply.getQualifier()] and
+      e.getExpr() = apply.getQualifier() and
       nodeTo.(PostUpdateNodeImpl).getPreUpdateNode().getCfgNode() = e
     )
     or
@@ -61,6 +61,11 @@ private module Cached {
       se = nodeTo.asExpr()
     )
     or
+    // flow through autoclosure expressions (which turn value arguments into closure arguments);
+    // if the value is tainted, it's helpful to consider the autoclosure itself to be tainted as
+    // well for the purposes of matching sink models.
+    nodeFrom.asExpr() = nodeTo.asExpr().(AutoClosureExpr).getExpr()
+    or
     // flow through the read of a content that inherits taint
     exists(DataFlow::ContentSet f |
       readStep(nodeFrom, f, nodeTo) and
@@ -68,7 +73,8 @@ private module Cached {
     )
     or
     // flow through a flow summary (extension of `SummaryModelCsv`)
-    FlowSummaryImpl::Private::Steps::summaryLocalStep(nodeFrom, nodeTo, false)
+    FlowSummaryImpl::Private::Steps::summaryLocalStep(nodeFrom.(FlowSummaryNode).getSummaryNode(),
+      nodeTo.(FlowSummaryNode).getSummaryNode(), false)
     or
     any(AdditionalTaintStep a).step(nodeFrom, nodeTo)
   }

@@ -7,21 +7,21 @@ def codeql_workspace(repository_name = "codeql"):
     maybe(
         repo_rule = http_archive,
         name = "rules_pkg",
-        sha256 = "62eeb544ff1ef41d786e329e1536c1d541bb9bcad27ae984d57f18f314018e66",
+        sha256 = "8f9ee2dc10c1ae514ee599a8b42ed99fa262b757058f65ad3c384289ff70c4b8",
         urls = [
-            "https://mirror.bazel.build/github.com/bazelbuild/rules_pkg/releases/download/0.6.0/rules_pkg-0.6.0.tar.gz",
-            "https://github.com/bazelbuild/rules_pkg/releases/download/0.6.0/rules_pkg-0.6.0.tar.gz",
+            "https://mirror.bazel.build/github.com/bazelbuild/rules_pkg/releases/download/0.9.1/rules_pkg-0.9.1.tar.gz",
+            "https://github.com/bazelbuild/rules_pkg/releases/download/0.9.1/rules_pkg-0.9.1.tar.gz",
         ],
     )
 
     maybe(
         repo_rule = http_archive,
         name = "platforms",
-        sha256 = "460caee0fa583b908c622913334ec3c1b842572b9c23cf0d3da0c2543a1a157d",
         urls = [
-            "https://mirror.bazel.build/github.com/bazelbuild/platforms/releases/download/0.0.3/platforms-0.0.3.tar.gz",
-            "https://github.com/bazelbuild/platforms/releases/download/0.0.3/platforms-0.0.3.tar.gz",
+            "https://mirror.bazel.build/github.com/bazelbuild/platforms/releases/download/0.0.8/platforms-0.0.8.tar.gz",
+            "https://github.com/bazelbuild/platforms/releases/download/0.0.8/platforms-0.0.8.tar.gz",
         ],
+        sha256 = "8150406605389ececb6da07cbcb509d5637a3ab9a24bc69b1101531367d89d74",
     )
 
     maybe(
@@ -42,14 +42,4 @@ def codeql_workspace(repository_name = "codeql"):
             "https://mirror.bazel.build/github.com/bazelbuild/bazel-skylib/releases/download/1.4.1/bazel-skylib-1.4.1.tar.gz",
             "https://github.com/bazelbuild/bazel-skylib/releases/download/1.4.1/bazel-skylib-1.4.1.tar.gz",
         ],
-    )
-
-    maybe(
-        repo_rule = http_archive,
-        name = "absl",
-        sha256 = "cec2e5bf780532bd0ac672eb8d43c0f8bbe84ca5df8718320184034b7f59a398",
-        urls = [
-            "https://github.com/abseil/abseil-cpp/archive/d2c5297a3c3948de765100cb7e5cccca1210d23c.tar.gz",
-        ],
-        strip_prefix = "abseil-cpp-d2c5297a3c3948de765100cb7e5cccca1210d23c",
     )

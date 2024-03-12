@@ -1,5 +1,6 @@
 private import cpp
 import semmle.code.cpp.ir.implementation.raw.IR
+private import semmle.code.cpp.internal.ExtractorVersion
 private import semmle.code.cpp.ir.IRConfiguration
 private import semmle.code.cpp.ir.implementation.Opcode
 private import semmle.code.cpp.ir.implementation.internal.OperandTag
@@ -77,17 +78,17 @@ private predicate ignoreExprAndDescendants(Expr expr) {
     newExpr.getInitializer().getFullyConverted() = expr
   )
   or
+  exists(DeleteOrDeleteArrayExpr deleteExpr |
+    // Ignore the deallocator call, because we always synthesize it.
+    deleteExpr.getDeallocatorCall() = expr
+  )
+  or
   // Do not translate input/output variables in GNU asm statements
   //  getRealParent(expr) instanceof AsmStmt
   //  or
   ignoreExprAndDescendants(getRealParent(expr)) // recursive case
   or
-  // We do not yet translate destructors properly, so for now we ignore any
-  // custom deallocator call, if present.
-  exists(DeleteExpr deleteExpr | deleteExpr.getAllocatorCall() = expr)
-  or
-  exists(DeleteArrayExpr deleteArrayExpr | deleteArrayExpr.getAllocatorCall() = expr)
-  or
+  // va_start doesn't evaluate its argument, so we don't need to translate it.
   exists(BuiltInVarArgsStart vaStartExpr |
     vaStartExpr.getLastNamedParameter().getFullyConverted() = expr
   )
@@ -104,6 +105,12 @@ private predicate ignoreExprOnly(Expr expr) {
     newExpr.getAllocatorCall() = expr
   )
   or
+  exists(DeleteOrDeleteArrayExpr deleteExpr |
+    // Ignore the destructor call as we don't model it yet. Don't ignore
+    // its arguments, though, as they are the arguments to the deallocator.
+    deleteExpr.getDestructorCall() = expr
+  )
+  or
   // The extractor deliberately emits an `ErrorExpr` as the first argument to
   // the allocator call, if any, of a `NewOrNewArrayExpr`. That `ErrorExpr`
   // should not be translated.
@@ -111,13 +118,6 @@ private predicate ignoreExprOnly(Expr expr) {
   or
   not translateFunction(getEnclosingFunction(expr)) and
   not Raw::varHasIRFunc(getEnclosingVariable(expr))
-  or
-  // We do not yet translate destructors properly, so for now we ignore the
-  // destructor call. We do, however, translate the expression being
-  // destructed, and that expression can be a child of the destructor call.
-  exists(DeleteExpr deleteExpr | deleteExpr.getDestructorCall() = expr)
-  or
-  exists(DeleteArrayExpr deleteArrayExpr | deleteArrayExpr.getDestructorCall() = expr)
 }
 
 /**
@@ -190,10 +190,7 @@ private predicate isNativeCondition(Expr expr) {
  * depending on context.
  */
 private predicate isFlexibleCondition(Expr expr) {
-  (
-    expr instanceof ParenthesisExpr or
-    expr instanceof NotExpr
-  ) and
+  expr instanceof ParenthesisExpr and
   usedAsCondition(expr) and
   not isIRConstant(expr)
 }
@@ -216,11 +213,6 @@ private predicate usedAsCondition(Expr expr) {
     // The two-operand form of `ConditionalExpr` treats its condition as a value, since it needs to
     // be reused as a value if the condition is true.
     condExpr.getCondition().getFullyConverted() = expr and not condExpr.isTwoOperand()
-  )
-  or
-  exists(NotExpr notExpr |
-    notExpr.getOperand().getFullyConverted() = expr and
-    usedAsCondition(notExpr)
   )
   or
   exists(ParenthesisExpr paren |
@@ -362,6 +354,12 @@ predicate ignoreLoad(Expr expr) {
     or
     expr instanceof FunctionAccess
     or
+    // The load is duplicated from the operand.
+    isExtractorFrontendVersion65OrHigher() and expr instanceof ParenthesisExpr
+    or
+    // The load is duplicated from the right operand.
+    isExtractorFrontendVersion65OrHigher() and expr instanceof CommaExpr
+    or
     expr.(PointerDereferenceExpr).getOperand().getFullyConverted().getType().getUnspecifiedType()
       instanceof FunctionPointerType
     or
@@ -416,7 +414,9 @@ predicate hasTranslatedLoad(Expr expr) {
   not ignoreExpr(expr) and
   not isNativeCondition(expr) and
   not isFlexibleCondition(expr) and
-  not ignoreLoad(expr)
+  not ignoreLoad(expr) and
+  // don't insert a load since we'll just substitute the constant value.
+  not isIRConstant(expr)
 }
 
 /**
@@ -821,7 +821,10 @@ abstract class TranslatedElement extends TTranslatedElement {
   abstract Locatable getAst();
 
   /** DEPRECATED: Alias for getAst */
-  deprecated Locatable getAST() { result = getAst() }
+  deprecated Locatable getAST() { result = this.getAst() }
+
+  /** Gets the location of this element. */
+  Location getLocation() { result = this.getAst().getLocation() }
 
   /**
    * Get the first instruction to be executed in the evaluation of this element.
@@ -831,7 +834,7 @@ abstract class TranslatedElement extends TTranslatedElement {
   /**
    * Get the immediate child elements of this element.
    */
-  final TranslatedElement getAChild() { result = getChild(_) }
+  final TranslatedElement getAChild() { result = this.getChild(_) }
 
   /**
    * Gets the immediate child element of this element. The `id` is unique
@@ -844,25 +847,29 @@ abstract class TranslatedElement extends TTranslatedElement {
    * Gets the an identifier string for the element. This id is unique within
    * the scope of the element's function.
    */
-  final int getId() { result = getUniqueId() }
+  final int getId() { result = this.getUniqueId() }
 
   private TranslatedElement getChildByRank(int rankIndex) {
     result =
-      rank[rankIndex + 1](TranslatedElement child, int id | child = getChild(id) | child order by id)
+      rank[rankIndex + 1](TranslatedElement child, int id |
+        child = this.getChild(id)
+      |
+        child order by id
+      )
   }
 
   language[monotonicAggregates]
   private int getDescendantCount() {
     result =
-      1 + sum(TranslatedElement child | child = getChildByRank(_) | child.getDescendantCount())
+      1 + sum(TranslatedElement child | child = this.getChildByRank(_) | child.getDescendantCount())
   }
 
   private int getUniqueId() {
-    if not exists(getParent())
+    if not exists(this.getParent())
     then result = 0
     else
       exists(TranslatedElement parent |
-        parent = getParent() and
+        parent = this.getParent() and
         if this = parent.getChildByRank(0)
         then result = 1 + parent.getUniqueId()
         else
@@ -908,7 +915,7 @@ abstract class TranslatedElement extends TTranslatedElement {
    * there is no enclosing `try`.
    */
   Instruction getExceptionSuccessorInstruction() {
-    result = getParent().getExceptionSuccessorInstruction()
+    result = this.getParent().getExceptionSuccessorInstruction()
   }
 
   /**
@@ -1022,14 +1029,14 @@ abstract class TranslatedElement extends TTranslatedElement {
     exists(Locatable ast |
       result.getAst() = ast and
       result.getTag() = tag and
-      hasTempVariableAndAst(tag, ast)
+      this.hasTempVariableAndAst(tag, ast)
     )
   }
 
   pragma[noinline]
   private predicate hasTempVariableAndAst(TempVariableTag tag, Locatable ast) {
-    hasTempVariable(tag, _) and
-    ast = getAst()
+    this.hasTempVariable(tag, _) and
+    ast = this.getAst()
   }
 
   /**

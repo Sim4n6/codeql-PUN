@@ -85,7 +85,6 @@ codeql::ParamDecl DeclTranslator::translateParamDecl(const swift::ParamDecl& dec
 codeql::TopLevelCodeDecl DeclTranslator::translateTopLevelCodeDecl(
     const swift::TopLevelCodeDecl& decl) {
   auto entry = createEntry(decl);
-  assert(decl.getBody() && "Expect top level code to have body");
   entry.body = dispatcher.fetchLabel(decl.getBody());
   return entry;
 }
@@ -95,7 +94,6 @@ codeql::PatternBindingDecl DeclTranslator::translatePatternBindingDecl(
   auto entry = createEntry(decl);
   for (unsigned i = 0; i < decl.getNumPatternEntries(); ++i) {
     auto pattern = decl.getPattern(i);
-    assert(pattern && "Expect pattern binding decl to have all patterns");
     entry.patterns.push_back(dispatcher.fetchLabel(pattern));
     entry.inits.push_back(dispatcher.fetchOptionalLabel(decl.getInit(i)));
   }
@@ -252,9 +250,10 @@ codeql::ModuleDecl DeclTranslator::translateModuleDecl(const swift::ModuleDecl& 
 
 void DeclTranslator::fillFunction(const swift::AbstractFunctionDecl& decl,
                                   codeql::Function& entry) {
-  assert(decl.hasParameterList() && "Expect functions to have a parameter list");
   entry.name = !decl.hasName() ? "(unnamed function decl)" : constructName(decl.getName());
   entry.body = dispatcher.fetchOptionalLabel(decl.getBody());
+  CODEQL_EXPECT_OR(return, decl.hasParameterList(), "Function {} has no parameter list",
+                         *entry.name);
   entry.params = dispatcher.fetchRepeatedLabels(*decl.getParameters());
   auto self = const_cast<swift::ParamDecl* const>(decl.getImplicitSelfDecl());
   entry.self_param = dispatcher.fetchOptionalLabel(self);
@@ -272,7 +271,7 @@ void DeclTranslator::fillTypeDecl(const swift::TypeDecl& decl, codeql::TypeDecl&
   entry.name = decl.getNameStr().str();
   for (auto& typeLoc : decl.getInherited()) {
     if (auto type = typeLoc.getType()) {
-      entry.base_types.push_back(dispatcher.fetchLabel(type));
+      entry.inherited_types.push_back(dispatcher.fetchLabel(type));
     }
   }
   fillValueDecl(decl, entry);
@@ -280,7 +279,12 @@ void DeclTranslator::fillTypeDecl(const swift::TypeDecl& decl, codeql::TypeDecl&
 
 void DeclTranslator::fillIterableDeclContext(const swift::IterableDeclContext& decl,
                                              codeql::Decl& entry) {
-  entry.members = dispatcher.fetchRepeatedLabels(decl.getAllMembers());
+  for (auto member : decl.getMembers()) {
+    if (swift::AvailableAttr::isUnavailable(member)) {
+      continue;
+    }
+    entry.members.emplace_back(dispatcher.fetchLabel(member));
+  }
 }
 
 void DeclTranslator::fillVarDecl(const swift::VarDecl& decl, codeql::VarDecl& entry) {
@@ -321,7 +325,6 @@ void DeclTranslator::fillGenericContext(const swift::GenericContext& decl,
 }
 
 void DeclTranslator::fillValueDecl(const swift::ValueDecl& decl, codeql::ValueDecl& entry) {
-  assert(decl.getInterfaceType() && "Expect ValueDecl to have InterfaceType");
   entry.interface_type = dispatcher.fetchLabel(decl.getInterfaceType());
 }
 
@@ -371,4 +374,32 @@ codeql::CapturedDecl DeclTranslator::translateCapturedValue(const swift::Capture
   entry.is_escaping = !capture.isNoEscape();
   return entry;
 }
+
+codeql::MacroDecl DeclTranslator::translateMacroDecl(const swift::MacroDecl& decl) {
+  auto entry = createEntry(decl);
+  fillValueDecl(decl, entry);
+  fillGenericContext(decl, entry);
+  entry.name = constructName(decl.getName());
+  for (auto attr : decl.getAttrs().getAttributes<swift::MacroRoleAttr>()) {
+    entry.roles.emplace_back(dispatcher.fetchLabel(attr));
+  }
+  if (decl.getParameterList()) {
+    for (auto param : *decl.getParameterList()) {
+      entry.parameters.emplace_back(dispatcher.fetchLabel(param));
+    }
+  }
+  return entry;
+}
+
+codeql::MacroRole DeclTranslator::translateMacroRoleAttr(const swift::MacroRoleAttr& attr) {
+  auto entry = dispatcher.createEntry(attr);
+  entry.kind = static_cast<uint32_t>(attr.getMacroRole());
+  entry.macro_syntax = static_cast<uint8_t>(attr.getMacroSyntax());
+  entry.conformances = dispatcher.fetchRepeatedLabels(attr.getConformances());
+  for (auto& declName : attr.getNames()) {
+    entry.names.emplace_back(constructName(declName.getName()));
+  }
+  return entry;
+}
+
 }  // namespace codeql

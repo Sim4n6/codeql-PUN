@@ -3,8 +3,8 @@
  */
 
 import go
-private import semmle.go.dataflow.FlowSummary
 private import semmle.go.dataflow.internal.DataFlowPrivate
+private import semmle.go.dataflow.internal.FlowSummaryImpl::Private
 
 /** Provides models of commonly used functions in the `net/http` package. */
 module NetHttp {
@@ -134,7 +134,7 @@ module NetHttp {
     result = call.getReceiver()
   }
 
-  private class ResponseBody extends Http::ResponseBody::Range, DataFlow::ArgumentNode {
+  private class ResponseBody extends Http::ResponseBody::Range {
     DataFlow::Node responseWriter;
 
     ResponseBody() {
@@ -148,15 +148,18 @@ module NetHttp {
       exists(TaintTracking::FunctionModel model |
         // A modeled function conveying taint from some input to the response writer,
         // e.g. `io.Copy(responseWriter, someTaintedReader)`
+        this = model.getACall().getASyntacticArgument() and
         model.taintStep(this, responseWriter) and
         responseWriter.getType().implements("net/http", "ResponseWriter")
       )
       or
       exists(
-        SummarizedCallable callable, DataFlow::CallNode call, SummaryComponentStack input,
+        SummarizedCallableImpl callable, DataFlow::CallNode call, SummaryComponentStack input,
         SummaryComponentStack output
       |
-        callable = call.getACalleeIncludingExternals() and callable.propagatesFlow(input, output, _)
+        this = call.getASyntacticArgument() and
+        callable = call.getACalleeIncludingExternals() and
+        callable.propagatesFlow(input, output, _)
       |
         // A modeled function conveying taint from some input to the response writer,
         // e.g. `io.Copy(responseWriter, someTaintedReader)`
@@ -284,5 +287,19 @@ module NetHttp {
     }
 
     override predicate guardedBy(DataFlow::Node check) { check = handlerReg.getArgument(0) }
+  }
+
+  /**
+   * The File system access sinks
+   */
+  class HttpServeFile extends FileSystemAccess::Range, DataFlow::CallNode {
+    HttpServeFile() {
+      exists(Function f |
+        f.hasQualifiedName("net/http", "ServeFile") and
+        this = f.getACall()
+      )
+    }
+
+    override DataFlow::Node getAPathArgument() { result = this.getArgument(2) }
   }
 }
